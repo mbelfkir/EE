@@ -1,0 +1,14 @@
+awkward
+h5py
+hist
+matplotlib
+numpy
+pandas
+Pillow
+pydantic
+PyYAML
+scikit-learn
+torch
+tqdm
+uproot
+zuko

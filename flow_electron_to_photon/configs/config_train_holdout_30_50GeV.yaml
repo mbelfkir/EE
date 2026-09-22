@@ -1,0 +1,319 @@
+runtime:
+  output_path: outputs/shower_shape_flow/holdout
+  seed: 1
+  copy_config: true
+
+io:
+  source:
+    file_paths:
+      - data/electron_30GeV_10k.root
+      - data/electron_50GeV_10k.root
+    tree_name: physics
+    branch_overrides: {}
+  target:
+    file_paths:
+      - data/photon_30GeV_10k.root
+      - data/photon_50GeV_10k.root
+    tree_name: physics
+    branch_overrides: {}
+  source_label: electrons
+  target_label: photons
+
+root:
+  branches:
+    cell_energy: cell_e
+    cell_x: cell_x
+    cell_y: cell_y
+    cell_layer: cell_l
+    cell_dx: cell_dx
+    cell_dy: cell_dy
+    layer1_energy: ECAL1_e
+    layer2_energy: ECAL2_e
+    layer3_energy: ECAL3_e
+    cluster_energy: Cal_e
+    total_energy: Caltotal_e
+    particle_energy: particle_e
+    particle_px: particle_px
+    particle_py: particle_py
+    particle_pz: particle_pz
+    particle_pdgid: particle_pdgId
+    event_weight: null
+    event_number: null
+  physics:
+    eta_phi_unit_mm: 1440.0
+    default_center_layer: 2
+    default_layer_cell_sizes:
+      "1": [0.003125, 0.1]
+      "2": [0.025, 0.025]
+      "3": [0.05, 0.025]
+    feature_builders:
+      weight:
+        type: constant
+        value: 1.0
+      event_number:
+        type: entry_index
+      pt:
+        type: momentum_pt
+      eta:
+        type: momentum_eta
+      phi:
+        type: momentum_phi
+      layer1_energy:
+        type: branch
+        branch: layer1_energy
+      layer2_energy:
+        type: branch
+        branch: layer2_energy
+      layer3_energy:
+        type: branch
+        branch: layer3_energy
+      cluster_energy:
+        type: branch
+        branch: cluster_energy
+      total_energy:
+        type: branch
+        branch: total_energy
+      reta:
+        type: layer2_reta
+        center_layer: 2
+      rphi:
+        type: layer2_rphi
+        center_layer: 2
+      weta2:
+        type: layer2_weta2
+        center_layer: 2
+        eta_bins: 3
+        phi_bins: 5
+      wstot:
+        type: layer1_wstot
+        center_layer: 1
+        eta_bins: 20
+        phi_bins: 3
+      f1:
+        type: energy_fraction
+        numerator: layer1_energy
+        denominator: cluster_energy
+      fside:
+        type: layer1_fside
+        center_layer: 1
+        outer_eta_bins: 7
+        core_eta_bins: 3
+        phi_bins: 3
+      deltae:
+        type: layer1_deltae
+        center_layer: 1
+        eta_bins: 21
+        phi_bins: 3
+        min_peak_gap_bins: 2
+      eratio:
+        type: layer1_eratio
+        center_layer: 1
+        eta_bins: 21
+        phi_bins: 3
+        min_peak_gap_bins: 2
+
+processor:
+  pre:
+    - type: dataset_shuffle
+      name: shuffle_input
+    - type: query_cuts
+      name: base_cuts
+      expressions:
+        - "cluster_energy > 0"
+    - type: cast_to_float
+      name: cast_to_float
+      variables:
+        - weight
+        - event_number
+        - cluster_energy
+        - layer1_energy
+        - layer2_energy
+        - reta
+        - rphi
+        - weta2
+        - wstot
+        - f1
+        - fside
+        - deltae
+        - eratio
+    - type: plot_variables
+      name: plots_before
+      variables:
+        - reta
+        - rphi
+        - weta2
+        - eratio
+      weight_var: weight
+      variable_labels: &variable_labels
+        cluster_energy: "E_{cluster}"
+        layer1_energy: "E_{L1}"
+        layer2_energy: "E_{L2}"
+        total_energy: "E_{total}"
+        reta: "R_{#eta}"
+        rphi: "R_{#phi}"
+        weta2: "w_{#eta2}"
+        wstot: "w_{s3}"
+        f1: "f_{1}"
+        fside: "f_{side}"
+        deltae: "#DeltaE"
+        eratio: "E_{ratio}"
+      binning: &binning
+        reta: [60, 0.0, 1.2]
+        rphi: [60, 0.0, 1.2]
+        weta2: [60, 0.0, 0.05]
+        wstot: [60, 0.0, 0.25]
+        f1: [60, 0.0, 1.0]
+        fside: [60, 0.0, 1.0]
+        deltae: [60, 0.0, 2.0]
+        eratio: [60, 0.0, 1.05]
+      annotation: &annotation "Electron #rightarrow photon"
+      subannotation: &subannotation "Two-layer shower-shape normalizing flow, 30+50 GeV, 70/30 holdout"
+      ylabel: &ylabel "Normalized entries"
+      ratio_ylabel: &ratio_ylabel "Target / Source"
+      legend_labels: &legend_labels
+        proto: "Electrons"
+        proto_corr: "e #rightarrow #gamma corrected"
+        target: "Photons"
+        proto_fudged: "Reference"
+        bkg: "Background"
+    - type: smooth
+      name: smooth_inputs
+      eratio_variables:
+        - eratio
+        - eratio_NF
+      deltae_variables: []
+    - type: standardize
+      name: standardize_inputs
+      mode: fit
+      weighted: false
+      weight_var: weight
+      variables:
+        - cluster_energy
+        - layer1_energy
+        - layer2_energy
+        - reta
+        - rphi
+        - weta2
+        - eratio
+      post_mapping:
+        reta_NF: reta
+        rphi_NF: rphi
+        weta2_NF: weta2
+        eratio_NF: eratio
+    - type: split_train_test_validation
+      name: split_holdout
+      split_mode: holdout
+      nfolds: 1
+      test_fraction: 0.3
+      stratify_by_type: true
+      train_to_validation_ratio: 1.0
+    - type: train_apply_flow
+      name: train_apply
+      kinematic:
+        - cluster_energy
+        - layer1_energy
+        - layer2_energy
+      shower_shapes:
+        - reta
+        - rphi
+        - weta2
+        - eratio
+      weight_var: weight
+      n_transforms: 6
+      max_epoch: 100
+      points_per_record: 1024
+      points_per_epoch: 10
+      aux_nodes: 128
+      aux_layers: 3
+      n_splines_bins: 8
+      initial_lr: 0.001
+      batch_size: 128
+      weighted: false
+      nfolds: 1
+      corr_suffix: _NF
+      fudged_prefix: ""
+      variable_labels: *variable_labels
+      binning: *binning
+      annotation: *annotation
+      subannotation: *subannotation
+      ylabel: *ylabel
+      ratio_ylabel: *ratio_ylabel
+      legend_labels: *legend_labels
+      kinematic_slices:
+        cluster_energy: [9000.0, 20000.0, 30000.0, 40000.0, 55000.0]
+      smooth_step_name: smooth_inputs
+      standardize_step_name: standardize_inputs
+
+  post:
+    - type: standardize
+      name: standardize_inputs
+      mode: fit
+      weighted: false
+      weight_var: weight
+      variables:
+        - cluster_energy
+        - layer1_energy
+        - layer2_energy
+        - reta
+        - rphi
+        - weta2
+        - eratio
+      post_mapping:
+        reta_NF: reta
+        rphi_NF: rphi
+        weta2_NF: weta2
+        eratio_NF: eratio
+    - type: smooth
+      name: smooth_inputs
+      eratio_variables:
+        - eratio
+        - eratio_NF
+      deltae_variables: []
+    - type: plot_corrected_variables
+      name: plots_after
+      variables:
+        - reta
+        - rphi
+        - weta2
+        - eratio
+      weight_var: weight
+      variable_labels: *variable_labels
+      binning: *binning
+      annotation: *annotation
+      subannotation: *subannotation
+      ylabel: *ylabel
+      ratio_ylabel: *ratio_ylabel
+      legend_labels: *legend_labels
+      corr_suffix: _NF
+    - type: plot_correlation_matrices
+      name: correlations_after
+      variables:
+        - reta
+        - rphi
+        - weta2
+        - eratio
+      weight_var: weight
+      variable_labels: *variable_labels
+      corr_suffix: _NF
+    - type: plot_corrected_variables_slices
+      name: slices_after
+      variables:
+        - reta
+        - rphi
+        - weta2
+        - eratio
+      weight_var: weight
+      variable_labels: *variable_labels
+      binning: *binning
+      annotation: *annotation
+      subannotation: *subannotation
+      ylabel: *ylabel
+      ratio_ylabel: *ratio_ylabel
+      legend_labels: *legend_labels
+      corr_suffix: _NF
+      kinematic_slices:
+        cluster_energy: [9000.0, 20000.0, 30000.0, 40000.0, 55000.0]
+    - type: export_source
+      name: corrected_output
+      filename: corrected_electrons
+      format: hdf5

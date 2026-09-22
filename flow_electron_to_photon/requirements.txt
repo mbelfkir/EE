@@ -1,0 +1,13 @@
+torch
+numpy
+pandas
+matplotlib
+uproot
+awkward
+PyYAML
+pydantic
+h5py
+scikit-learn
+zuko
+hist
+tqdm
